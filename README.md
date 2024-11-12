@@ -58,7 +58,7 @@ open index.html
 ## File Structure
 
 ```hash
-`- index.html # Main HTML file containing the app's structure`
+- index.html # Main HTML file containing the app's structure
 ```
 
 ## Known Issues
