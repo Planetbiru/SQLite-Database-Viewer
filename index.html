@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLite Database Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.js"></script>
+    <style>
+        body {
+            display: flex; /* Flexbox layout for body */
+            height: 100vh; /* Full height of the viewport */
+            margin: 0; /* Remove default margin */
+            position: relative; /* For positioning child elements */
+        }
+        #sidebar {
+            width: 200px; /* Fixed width for sidebar */
+            border-right: 1px solid #ccc; /* Border for separation */
+            padding: 10px; /* Padding for aesthetics */
+            overflow-y: auto; /* Allow vertical scrolling */
+            position: fixed; /* Keep sidebar fixed during scrolling */
+            height: 100%; /* Full height */
+            box-sizing: border-box; /* Include padding and border in element's total width */
+        }
+        #main {
+            margin-left: 200px; /* Leave space for the sidebar */
+            margin-right: 400px; /* Leave space for the right bar */
+            padding: 16px; /* Increased padding for better appearance */
+            flex-grow: 1; /* Main content area takes up remaining space */
+            box-sizing: border-box; /* Include padding and border in width calculation */
+            width: calc(100% - 600px); /* Calculate width based on sidebar and right bar */
+        }
+        #rightbar {
+            width: 400px; /* Fixed width for the right bar */
+            border-left: 1px solid #ccc; /* Border for separation */
+            padding: 10px; /* Padding for aesthetics */
+            position: fixed; /* Keep right bar fixed during scrolling */
+            right: 0; /* Align to the right */
+            height: 100%; /* Full height */
+            overflow-y: auto; /* Allow vertical scrolling */
+            box-sizing: border-box; /* Include padding and border in width calculation */
+        }
+        table {
+            border-collapse: collapse; /* Collapse borders for better appearance */
+            width: auto; /* Let the table determine its width */
+            min-width: 600px; /* Minimum width for the table */
+        }
+        th, td {
+            border: 1px solid #ccc; /* Border for table cells */
+            padding: 8px; /* Padding for cells */
+            text-align: left; /* Align text to the left */
+            white-space: nowrap; /* Prevent text from wrapping */
+        }
+        .selected {
+            background-color: #e0e0e0; /* Highlight color for selected row */
+        }
+        #output {
+            padding-right: 20px; /* Right padding for scroll bar */
+            padding-bottom: 30px; /* Bottom padding for scroll bar */
+            width: 100%; /* Full width */
+            overflow: auto; /* Allow scrolling if content overflows */
+            box-sizing: border-box; /* Include padding and border in width calculation */
+            min-height: calc(100vh - 67px); /* Minimum height accounting for header */
+        }
+        input, textarea {
+            box-sizing: border-box; /* Include padding and border in total width/height */
+            width: 100%; /* Make inputs fill the available width */
+            padding: 4px; /* Add some padding for better appearance */
+            margin-top: 4px; /* Space between label and input */
+        }
+        textarea {
+            height: 50px; /* Fixed height for textarea */
+            resize: vertical; /* Allow vertical resizing only */
+        }
+        #table-list {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+        }
+        #table-list a
+        {
+            color: #555555;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    
+    <div id="sidebar">
+        <ul id="table-list"></ul>
+    </div> <!-- Sidebar for table names -->
+    <div id="main">
+        <input type="file" id="fileInput" accept=".sqlite" /> <!-- File input for SQLite files -->
+        <div id="output"></div> <!-- Area to display table data -->
+    </div>
+    <div id="rightbar">
+        <h3>View Data</h3>
+        <form id="editForm"></form> <!-- Form for editing data -->
+    </div>
+
+    <script>
+        let currentData = null; // To hold the currently selected data
+        let selectedRowIndex = null; // To keep track of the selected row index
+        let columnInfo = []; // To hold column information for the currently selected table
+
+        // Event listener for file input change
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0]; // Get the selected file
+            if (!file) {
+                return; // Exit if no file is selected
+            }
+
+            const reader = new FileReader(); // Create a FileReader object
+            reader.onload = function(event) {
+                const arrayBuffer = event.target.result; // Get file data as an ArrayBuffer
+                const uint8Array = new Uint8Array(arrayBuffer); // Convert ArrayBuffer to Uint8Array
+                
+                // Initialize SQL.js and load the database
+                initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm` }).then(SQL => {
+                    const db = new SQL.Database(uint8Array); // Create a new database instance
+
+                    // Get the names of all tables in the database
+                    let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
+                    
+                    let tableList = document.querySelector('#sidebar #table-list'); // Get sidebar element
+                    tableList.innerHTML = ''; // Clear previous table names
+                    res1[0].values.forEach(row => {
+                        let tableListItem = document.createElement('li');
+                        let tableName = row[0]; // Extract table name
+                        let tableContentLink = document.createElement('a'); // Create a link for the table
+                        tableContentLink.href = '#';
+                        tableContentLink.innerText = tableName; // Set link text to table name
+                        tableContentLink.classList.add('table-content');
+                        tableContentLink.addEventListener('click', function(e) {
+                            e.preventDefault(); // Prevent default link behavior
+                            displayTableData(db, tableName); // Display table data on click
+                        });
+                        let tableStructureLink = document.createElement('a'); // Create a link for the table
+                        tableStructureLink.href = '#';
+                        tableStructureLink.innerText = '#'; // Set link text to table name
+                        tableStructureLink.classList.add('table-structure');
+                        tableStructureLink.addEventListener('click', function(e) {
+                            e.preventDefault(); // Prevent default link behavior
+                            displayTableStructure(db, tableName); // Display table data on click
+                        });
+
+                        tableListItem.appendChild(tableStructureLink);
+                        tableListItem.appendChild(document.createTextNode(' '));
+                        tableListItem.appendChild(tableContentLink);
+                        tableList.appendChild(tableListItem); // Add link to sidebar
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file); // Read the selected file
+        });
+
+        // Function to display table structure (columns and their data types)
+        function displayTableStructure(db, tableName) {
+            let res = db.exec(`PRAGMA table_info(${tableName});`); // Get column info using PRAGMA table_info
+            let output = document.getElementById('output'); // Get output area
+            output.innerHTML = ''; // Clear previous output
+
+            if (res.length > 0) {
+                // Create an HTML table to display column info
+                let tableString = '<table><thead><tr><th>Column Name</th><th>Data Type</th><th>Not Null</th><th>Default</th><th>Primary Key</th></tr></thead><tbody>';
+
+                // Iterate through the column info and create table rows
+                res[0].values.forEach(column => {
+                    tableString += '<tr>';
+                    tableString += `<td>${column[1]}</td>`; // Column name
+                    tableString += `<td>${column[2]}</td>`; // Data type
+                    tableString += `<td>${column[3] === 1 ? 'Yes' : 'No'}</td>`; // Not Null constraint
+                    tableString += `<td>${column[4] === null ? '' : column[4]}</td>`; // Default data
+                    tableString += `<td>${column[5] === 1 ? 'Yes' : 'No'}</td>`; // Primary Key constraint
+                    tableString += '</tr>';
+                });
+                tableString += '</tbody></table>'; // Close the table
+
+                output.innerHTML = tableString; // Display the generated table structure
+            } else {
+                output.innerHTML = "No structure found."; // Display message if no structure is found
+            }
+        }
+
+
+        // Function to display data from the selected table
+        function displayTableData(db, tableName) {
+            let res = db.exec("SELECT * FROM " + tableName); // Execute query to fetch all data
+            let output = document.getElementById('output'); // Get output area
+            output.innerHTML = ''; // Clear previous output
+
+            // Fetch column info for the table
+            columnInfo = db.exec(`PRAGMA table_info(${tableName});`)[0].values;
+
+            if (res.length > 0) {
+                output.innerHTML = createTable(res[0]); // Create and display table
+                currentData = res[0]; // Store current data for editing
+            } else {
+                output.innerHTML = "No data found."; // Display message if no data
+            }
+        }
+
+
+
+        // Function to create HTML table from data
+        function createTable(data) {
+            let tableString = '<table class="table-data"><thead><tr>';
+
+            // Add column headers
+            data.columns.forEach(column => {
+                tableString += `<th>${column}</th>`;
+            });
+            tableString += '</tr></thead><tbody>';
+
+            // Add rows of data
+            data.values.forEach((row, rowIndex) => {
+                tableString += '<tr>';
+                row.forEach((cell, index) => {
+                    tableString += `<td>${cell !== null ? cell : ''}</td>`; // Handle null values
+                });
+                tableString += '</tr>';
+            });
+            tableString += '</tbody></table>'; // Close table
+
+            return tableString; // Return generated table HTML
+        }
+
+        // Function to display selected row data in the right sidebar
+        function displayEditForm(row) {
+            const editForm = document.getElementById('editForm'); // Get edit form element
+            editForm.innerHTML = ''; // Clear previous form
+
+            currentData.columns.forEach((column, index) => {
+                const dataType = "" + getDataType(column); // Get the data type of the column
+                const length = currentData.values[0][index]?.toString().length || 0; // Calculate length
+
+                const formGroup = document.createElement('div'); // Create a container for each form element
+                formGroup.innerHTML = `<div>${column} <div style="float:right">${dataType}</div></div>`; // Add column name and data type
+
+                let input; // Variable to hold the input element
+                // Determine input type based on data type
+                if (dataType.toLocaleLowerCase() === 'text' || dataType.toLocaleLowerCase() === 'longtext') {
+                    input = document.createElement('textarea'); // Use textarea for text types
+                    input.value = row[index] || ''; // Set value from the row data
+                    input.setAttribute('spellcheck', 'false'); // Disable spellcheck
+                } else {
+                    input = document.createElement('input'); // Use input for other types
+                    input.type = 'text';
+                    input.value = row[index] || ''; // Set value from the row data
+                }
+                formGroup.appendChild(input); // Add input to form group
+                editForm.appendChild(formGroup); // Add form group to edit form
+            });
+        }
+
+        // Function to get the data type of a column
+        function getDataType(columnName) {
+            // Find the column info for the specified column name
+            const column = columnInfo.find(col => col[1] === columnName); // Column info retrieval
+            return column ? column[2] : 'UNKNOWN'; // Return type or 'UNKNOWN' if not found
+        }
+
+        // Add event listener to the table rows for displaying edit form
+        document.addEventListener('click', function(event) {
+            if (event.target.tagName === 'TD' && event.target.closest('table').classList.contains('table-data')) { // Check if a table cell was clicked
+                const rowIndex = event.target.parentNode.rowIndex - 1; // Get the row index (adjust for header)
+                if (selectedRowIndex !== null) {
+                    const previousRow = document.querySelectorAll('#output tr')[selectedRowIndex + 1]; // Get previous row
+                    previousRow.classList.remove('selected'); // Remove highlight from previous row
+                }
+                selectedRowIndex = rowIndex; // Update selected row index
+                event.target.parentNode.classList.add('selected'); // Highlight current row
+                displayEditForm(currentData.values[rowIndex]); // Display edit form for selected row
+            }
+        });
+    </script>
+</body>
+</html>
