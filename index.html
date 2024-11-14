@@ -25,7 +25,7 @@
             /* Fixed width for sidebar */
             border-right: 1px solid #ccc;
             /* Border for separation */
-            padding: 0px 10px 10px 10px;
+            padding: 0px 10px 0px 10px;
             /* Padding for aesthetics */
             overflow-y: auto;
             /* Allow vertical scrolling */
@@ -42,7 +42,7 @@
             /* Leave space for the sidebar */
             margin-right: 400px;
             /* Leave space for the right bar */
-            padding: 0px 16px 16px 16px;
+            padding: 0px 10px 10px 10px;
             /* Increased padding for better appearance */
             flex-grow: 1;
             /* Main content area takes up remaining space */
@@ -99,17 +99,18 @@
 
         #output {
             padding-right: 20px;
-            /* Right padding for scroll bar */
             padding-bottom: 30px;
-            /* Bottom padding for scroll bar */
             width: 100%;
-            /* Full width */
-            overflow: auto;
-            /* Allow scrolling if content overflows */
+            
             box-sizing: border-box;
-            /* Include padding and border in width calculation */
+            
+            
+        }
+
+        #output, #selected-data, #table-container{
             min-height: calc(100vh - 67px);
-            /* Minimum height accounting for header */
+            height: calc(100vh - 215px);
+            overflow: auto;
         }
 
         input[type="text"],
@@ -148,6 +149,16 @@
         #table-list a {
             color: #222222;
             text-decoration: none;
+        }
+
+        #table-list li{
+            padding: 5px 8px;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+        }
+        #table-list li.highlight{
+            background-color: #EEEEEE;
         }
 
         .header-section {
@@ -194,7 +205,9 @@
 
     <div id="sidebar">
         <div class="header-section">Table</div>
-        <ul id="table-list"></ul>
+        <div id="table-container">
+            <ul id="table-list"></ul>
+        </div>
     </div> <!-- Sidebar for table names -->
     <div id="main">
         <div class="input-area header-section">
@@ -206,7 +219,9 @@
     </div>
     <div id="rightbar">
         <div class="header-section">View Data</div>
-        <form id="editForm"></form> <!-- Form for editing data -->
+        <div id="selected-data">
+            <form id="editForm"></form> <!-- Form for editing data -->
+        </div>
     </div>
 
     <script>
@@ -246,6 +261,7 @@
                         {
                             e.preventDefault(); // Prevent default link behavior
                             displayTableData(db, tableName); // Display table data on click
+                            hilightTable(e);
                         });
                         let tableStructureLink = document.createElement('a'); // Create a link for the table
                         tableStructureLink.href = '#';
@@ -255,6 +271,7 @@
                         {
                             e.preventDefault(); // Prevent default link behavior
                             displayTableStructure(db, tableName); // Display table data on click
+                            hilightTable(e);
                         });
 
                         tableListItem.appendChild(tableStructureLink);
@@ -275,7 +292,7 @@
 
             if (res.length > 0) {
                 // Create an HTML table to display column info
-                let tableString = '<table><thead><tr><th>Column Name</th><th>Data Type</th><th>Not Null</th><th>Default</th><th>Primary Key</th></tr></thead><tbody>';
+                let tableString = `<h3>Table Structure: ${tableName}</h3><table><thead><tr><th>Column Name</th><th>Data Type</th><th>Not Null</th><th>Default</th><th>Primary Key</th></tr></thead><tbody>`;
 
                 // Iterate through the column info and create table rows
                 res[0].values.forEach(column => {
@@ -306,10 +323,10 @@
             columnInfo = db.exec(`PRAGMA table_info(${tableName});`)[0].values;
 
             if (res.length > 0) {
-                output.innerHTML = createTable(res[0]); // Create and display table
+                output.innerHTML = `<h3>Table Content: ${tableName}</h3>`+createTable(res[0]); // Create and display table
                 currentData = res[0]; // Store current data for editing
             } else {
-                output.innerHTML = "No data found."; // Display message if no data
+                output.innerHTML = `<h3>Table Content: ${tableName}</h3>`+"<p>No data found.</p>"; // Display message if no data
             }
         }
 
@@ -372,6 +389,19 @@
             // Find the column info for the specified column name
             const column = columnInfo.find(col => col[1] === columnName); // Column info retrieval
             return column ? column[2] : 'UNKNOWN'; // Return type or 'UNKNOWN' if not found
+        }
+
+        function hilightTable(e)
+        {
+            console.log(e.target)
+            let li = e.target.closest('li');
+            const listItems = li.closest('ul').querySelectorAll('li');
+
+            // Iterasi dan hapus kelas tertentu (misalnya 'highlight') dari setiap elemen <li>
+            listItems.forEach(item => {
+                item.classList.remove('highlight');
+            });
+            li.classList.add('highlight');
         }
 
         // Add event listener to the table rows for displaying edit form
