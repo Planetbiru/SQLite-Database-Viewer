@@ -173,12 +173,13 @@
             display: none;
         }
 
-        .file-label {
+        .file-label, button {
             background-color: #393939;
             color: white;
             padding: 7px 12px;
             border-radius: 3px;
             cursor: pointer;
+            border: none;
         }
 
         .file-label:hover {
@@ -214,6 +215,8 @@
             <input type="file" id="fileInput" class="custom-file-input" accept=".sqlite" />
             <!-- File input for SQLite files -->
             <label for="fileInput" class="file-label">Select File</label>
+            <button id="downloadAllSqlButton">Export to SQL</button>
+
         </div>
         <div id="output"></div> <!-- Area to display table data -->
     </div>
@@ -228,6 +231,7 @@
         let currentData = null; // To hold the currently selected data
         let selectedRowIndex = null; // To keep track of the selected row index
         let columnInfo = []; // To hold column information for the currently selected table
+        let db;
 
         // Event listener for file input change
         document.getElementById('fileInput').addEventListener('change', function (event) {
@@ -243,7 +247,7 @@
 
                 // Initialize SQL.js and load the database
                 initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm` }).then(SQL => {
-                    const db = new SQL.Database(uint8Array); // Create a new database instance
+                    db = new SQL.Database(uint8Array); // Create a new database instance
 
                     // Get the names of all tables in the database
                     let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
@@ -417,6 +421,64 @@
                 displayEditForm(currentData.values[rowIndex]); // Display edit form for selected row
             }
         });
+
+        document.getElementById('downloadAllSqlButton').addEventListener('click', function () {
+            if (!db) {
+                alert('No database loaded!');
+                return;
+            }
+
+            // Get the list of all tables
+            const res = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
+            if (res.length === 0 || res[0].values.length === 0) {
+                alert('No tables found in the database.');
+                return;
+            }
+
+            const tableNames = res[0].values.map(row => row[0]); // Extract table names
+            let sqlContent = "-- SQL Export for All Tables\n\n";
+
+            tableNames.forEach(tableName => {
+                // Get table structure
+                const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
+                if (tableStructureRes.length > 0) {
+                    const columns = tableStructureRes[0].values.map(col => `${col[1]} TEXT`).join(",\n  ");
+                    sqlContent += `-- Table: ${tableName}\n`;
+                    sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
+                }
+
+                // Get table data
+                const tableDataRes = db.exec(`SELECT * FROM ${tableName};`);
+                if (tableDataRes.length > 0) {
+                    const columns = tableDataRes[0].columns;
+                    const rows = tableDataRes[0].values;
+
+                    rows.forEach(row => {
+                        const values = row.map(value =>
+                            value === null ? "NULL" : `'${value.toString().replace(/'/g, "''")}'` // Escape single quotes
+                        );
+                        sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
+                    });
+                    sqlContent += "\n";
+                }
+            });
+
+            // Create a downloadable file
+            const blob = new Blob([sqlContent], { type: "text/sql" });
+            const url = URL.createObjectURL(blob);
+
+            // Create a temporary download link and trigger download
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "all_tables.sql";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // Revoke URL to free memory
+            URL.revokeObjectURL(url);
+        });
+
     </script>
 </body>
 
