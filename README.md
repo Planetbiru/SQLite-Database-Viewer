@@ -5,7 +5,7 @@ A simple web-based viewer for SQLite databases. This application allows users to
 
 ## Features
 
--   **Load SQLite Databases**: Open `.sqlite` files directly from your browser.
+-   **Load SQLite Databases**: Open `.sqlite` files directly from your browser or load them from a server URL.
 -   **View Table Structure**: Display column names, data types, and constraints.
 -   **View Table Data**: Browse through table rows and columns.
 -   **Edit Data**: Edit the data in a table directly from the interface.
@@ -31,19 +31,22 @@ open index.html
 
 ## Usage
 
-1.  **Load an SQLite File**:
+1.  **Load an SQLite File From Server**:
+    
+    -   Enter the URL of the SQLite database and click the **Load from Server** button in the main section to load the database from a server.
+2.  **Load an SQLite File**:
     
     -   Click the **Choose File** button in the main section to upload an `.sqlite` file from your computer.
-2.  **View Table List**:
+3.  **View Table List**:
     
     -   Once the database is loaded, all table names will appear in the sidebar on the left. Click on a table name to view its structure or data.
-3.  **View Table Structure**:
+4.  **View Table Structure**:
     
     -   Click the `#` link next to a table name in the sidebar to view the table's structure (columns, data types, constraints).
-4.  **View Table Data**:
+5.  **View Table Data**:
     
     -   Click the table name in the sidebar to view its data. Data is displayed in a table format.
-5.  **Edit Table Data**:
+6.  **Edit Table Data**:
     
     -   Click on a row of data to select it. The corresponding data fields will appear in the right sidebar for editing.
     -   Modify the values as needed, and submit the changes.
@@ -65,6 +68,7 @@ open index.html
 
 -   Large SQLite databases may take time to load in the browser due to browser memory limitations.
 -   Some browser-specific issues may arise with file handling.
+-   CORS (Cross-Origin Resource Sharing) issues may prevent loading databases from some servers. Ensure that the server supports CORS or use a proxy if necessary.
 
 ## License
 
