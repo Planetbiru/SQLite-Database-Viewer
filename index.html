@@ -116,16 +116,23 @@
         input[type="text"],
         textarea {
             box-sizing: border-box;
-            /* Include padding and border in total width/height */
-            width: 100%;
+            
             /* Make inputs fill the available width */
             padding: 6px 8px;
-            /* Add some padding for better appearance */
-            margin-top: 4px;
+            
             /* Space between label and input */
             border: 1px solid #c9c9c9;
             color: #222222;
             background-color: #FFFFFF;
+        }
+
+        .data-column input[type="text"],
+        .data-column textarea
+        {
+            /* Include padding and border in total width/height */
+            width: 100%;
+            /* Add some padding for better appearance */
+            margin-top: 4px;
         }
 
         input:focus-visible,
@@ -214,6 +221,8 @@
         <div class="input-area header-section">
             <input type="file" id="fileInput" class="custom-file-input" accept=".sqlite" />
             <!-- File input for SQLite files -->
+            <input type="text" id="databaseUrl" placeholder="Enter database URL" />
+            <button id="loadFromServerButton">Load from Server</button>
             <label for="fileInput" class="file-label">Select File</label>
             <button id="downloadAllSqlButton">Export to SQL</button>
 
@@ -397,7 +406,6 @@
 
         function hilightTable(e)
         {
-            console.log(e.target)
             let li = e.target.closest('li');
             const listItems = li.closest('ul').querySelectorAll('li');
 
@@ -439,10 +447,21 @@
             let sqlContent = "-- SQL Export for All Tables\n\n";
 
             tableNames.forEach(tableName => {
-                // Get table structure
+                // Get table structure using PRAGMA table_info
                 const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
                 if (tableStructureRes.length > 0) {
-                    const columns = tableStructureRes[0].values.map(col => `${col[1]} TEXT`).join(",\n  ");
+                    const columns = tableStructureRes[0].values.map(col => {
+                        const columnName = col[1];  // Column name
+                        const dataType = col[2];  // Data type
+                        const isNotNull = col[3] === 1 ? "NOT NULL" : "";  // Handle NOT NULL constraint
+                        const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";  // Handle default value if any
+                        const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";  // Handle primary key constraint
+
+                        // Combine the parts to form the full column definition
+                        return `${columnName} ${dataType} ${isNotNull} ${defaultValue} ${primaryKey}`.trim();
+                    }).join(",\n  ");
+
+                    // Add CREATE TABLE statement
                     sqlContent += `-- Table: ${tableName}\n`;
                     sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
                 }
@@ -477,6 +496,68 @@
 
             // Revoke URL to free memory
             URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('loadFromServerButton').addEventListener('click', function () {
+            const databaseUrl = document.getElementById('databaseUrl').value.trim();
+
+            if (!databaseUrl) {
+                alert("Please enter a valid URL to load the database.");
+                return;
+            }
+
+            // Fetch the database from the server
+            fetch(databaseUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to load database. Please check the URL.");
+                    }
+                    return response.arrayBuffer();  // Convert the response to ArrayBuffer
+                })
+                .then(arrayBuffer => {
+                    const uint8Array = new Uint8Array(arrayBuffer);
+
+                    // Initialize SQL.js and load the database
+                    initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm` }).then(SQL => {
+                        db = new SQL.Database(uint8Array);  // Create a new database instance
+
+                        // Get the names of all tables in the database
+                        let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
+
+                        let tableList = document.querySelector('#sidebar #table-list'); // Get sidebar element
+                        tableList.innerHTML = ''; // Clear previous table names
+                        res1[0].values.forEach(row => {
+                            let tableListItem = document.createElement('li');
+                            let tableName = row[0]; // Extract table name
+                            let tableContentLink = document.createElement('a'); // Create a link for the table
+                            tableContentLink.href = '#';
+                            tableContentLink.innerText = tableName; // Set link text to table name
+                            tableContentLink.classList.add('table-content');
+                            tableContentLink.addEventListener('click', function (e) { //NOSONAR
+                                e.preventDefault(); // Prevent default link behavior
+                                displayTableData(db, tableName); // Display table data on click
+                                hilightTable(e);
+                            });
+                            let tableStructureLink = document.createElement('a'); // Create a link for the table
+                            tableStructureLink.href = '#';
+                            tableStructureLink.innerText = '#'; // Set link text to table name
+                            tableStructureLink.classList.add('table-structure');
+                            tableStructureLink.addEventListener('click', function (e) { //NOSONAR
+                                e.preventDefault(); // Prevent default link behavior
+                                displayTableStructure(db, tableName); // Display table data on click
+                                hilightTable(e);
+                            });
+
+                            tableListItem.appendChild(tableStructureLink);
+                            tableListItem.appendChild(document.createTextNode(' '));
+                            tableListItem.appendChild(tableContentLink);
+                            tableList.appendChild(tableListItem); // Add link to sidebar
+                        });
+                    });
+                })
+                .catch(error => {
+                    alert(`Error loading database from server: ${error.message}`);
+                });
         });
 
     </script>
