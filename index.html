@@ -4,8 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <meta name="description" content="SQLite Database Viewer - View and manage SQLite databases easily.">
+    <meta name="keywords" content="SQLite, Database Viewer, SQL, Web App">
+    <meta name="author" content="Kamshory">
+    <link rel="icon" href="favicon.png" type="image/png">
     <title>SQLite Database Viewer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.js"></script>
+    <script src="js/sql-wasm.js"></script>
     <style>
         body {
             display: flex;
@@ -203,6 +208,12 @@
             border-radius: 2px;
             color: #FFF;
         }
+
+        button:disabled {
+            background-color: #626262;
+            cursor: not-allowed;
+            color: #fff;
+        }
     </style>
 </head>
 
@@ -221,7 +232,8 @@
             <input type="text" id="databaseUrl" placeholder="Enter database URL" />
             <button id="loadFromServerButton">Load from Server</button>
             <label for="fileInput" class="file-label">Select File</label>
-            <button id="downloadAllSqlButton">Export to SQL</button>
+            <button id="downloadSqlButton" disabled>Export Table to SQL</button>
+            <button id="downloadAllSqlButton" disabled>Export Database to SQL</button>
 
         </div>
         <div id="output"></div> <!-- Area to display table data -->
@@ -238,6 +250,7 @@
         let selectedRowIndex = null; // To keep track of the selected row index
         let columnInfo = []; // To hold column information for the currently selected table
         let db;
+        let currentTableName = null; // To hold the name of the currently selected table
 
         // Event listener for file input change
         document.getElementById('fileInput').addEventListener('change', function (event) {
@@ -252,7 +265,7 @@
                 const uint8Array = new Uint8Array(arrayBuffer); // Convert ArrayBuffer to Uint8Array
 
                 // Initialize SQL.js and load the database
-                initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm` }).then(SQL => {
+                initSqlJs({ locateFile: file => `js/sql-wasm.wasm` }).then(SQL => {
                     db = new SQL.Database(uint8Array); // Create a new database instance
 
                     // Get the names of all tables in the database
@@ -289,6 +302,7 @@
                         tableListItem.appendChild(tableContentLink);
                         tableList.appendChild(tableListItem); // Add link to sidebar
                     });
+                    document.getElementById('downloadAllSqlButton').disabled = false; // Enable download button for all tables
                 });
             };
             reader.readAsArrayBuffer(file); // Read the selected file
@@ -325,6 +339,8 @@
 
         // Function to display data from the selected table
         function displayTableData(db, tableName) {
+            currentTableName = tableName; // Store the current table name
+            document.getElementById('downloadSqlButton').disabled = false; // Enable download button
             let res = db.exec("SELECT * FROM " + tableName); // Execute query to fetch all data
             let output = document.getElementById('output'); // Get output area
             output.innerHTML = ''; // Clear previous output
@@ -462,22 +478,77 @@
                     sqlContent += `-- Table: ${tableName}\n`;
                     sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
                 }
-
-                // Get table data
-                const tableDataRes = db.exec(`SELECT * FROM ${tableName};`);
-                if (tableDataRes.length > 0) {
-                    const columns = tableDataRes[0].columns;
-                    const rows = tableDataRes[0].values;
-
-                    rows.forEach(row => {
-                        const values = row.map(value =>
-                            value === null ? "NULL" : `'${value.toString().replace(/'/g, "''")}'` // Escape single quotes
-                        );
-                        sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
-                    });
-                    sqlContent += "\n";
-                }
             });
+
+            // Create a downloadable file
+            const blob = new Blob([sqlContent], { type: "text/sql" });
+            const url = URL.createObjectURL(blob);
+
+            // Create a temporary download link and trigger download
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "all_tables.sql";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // Revoke URL to free memory
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('downloadSqlButton').addEventListener('click', function () {
+            if (!db) {
+                alert('No database loaded!');
+                return;
+            }
+
+            // Get the list of all tables
+            const res = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
+            if (res.length === 0 || res[0].values.length === 0) {
+                alert('No tables found in the database.');
+                return;
+            }
+
+            let sqlContent = "-- SQL Export for All Tables\n\n";
+            let tableName = currentTableName; // Get the currently selected table name
+            if (!tableName) {
+                alert('No table selected!');
+                return;
+            }
+
+            // Get table structure using PRAGMA table_info
+            const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
+            if (tableStructureRes.length > 0) {
+                const columns = tableStructureRes[0].values.map(col => {
+                    const columnName = col[1];  // Column name
+                    const dataType = col[2];  // Data type
+                    const isNotNull = col[3] === 1 ? "NOT NULL" : "";  // Handle NOT NULL constraint
+                    const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";  // Handle default value if any
+                    const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";  // Handle primary key constraint
+
+                    // Combine the parts to form the full column definition
+                    return `${columnName} ${dataType} ${isNotNull} ${defaultValue} ${primaryKey}`.trim();
+                }).join(",\n  ");
+
+                // Add CREATE TABLE statement
+                sqlContent += `-- Table: ${tableName}\n`;
+                sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
+            }
+
+            // Get table data
+            const tableDataRes = db.exec(`SELECT * FROM ${tableName};`);
+            if (tableDataRes.length > 0) {
+                const columns = tableDataRes[0].columns;
+                const rows = tableDataRes[0].values;
+
+                rows.forEach(row => {
+                    const values = row.map(value =>
+                        value === null ? "NULL" : `'${value.toString().replace(/'/g, "''")}'` // Escape single quotes
+                    );
+                    sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
+                });
+                sqlContent += "\n";
+            }
 
             // Create a downloadable file
             const blob = new Blob([sqlContent], { type: "text/sql" });
@@ -550,6 +621,8 @@
                             tableListItem.appendChild(tableContentLink);
                             tableList.appendChild(tableListItem); // Add link to sidebar
                         });
+
+                        document.getElementById('downloadAllSqlButton').disabled = false; // Enable download button for all tables
                     });
                 })
                 .catch(error => {
