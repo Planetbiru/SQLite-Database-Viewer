@@ -45,7 +45,7 @@
         #main {
             margin-left: 200px;
             /* Leave space for the sidebar */
-            margin-right: 400px;
+            margin-right: 240px;
             /* Leave space for the right bar */
             padding: 0px 10px 10px 10px;
             /* Increased padding for better appearance */
@@ -58,7 +58,7 @@
         }
 
         #rightbar {
-            width: 400px;
+            width: 240px;
             /* Fixed width for the right bar */
             border-left: 1px solid #ccc;
             /* Border for separation */
@@ -110,7 +110,7 @@
         }
 
         #output, #selected-data, #table-container{
-            min-height: calc(100vh - 67px);
+            min-height: calc(100vh - 70px);
             height: calc(100vh - 215px);
             overflow: auto;
         }
@@ -449,52 +449,74 @@
                 return;
             }
 
-            // Get the list of all tables
             const res = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
             if (res.length === 0 || res[0].values.length === 0) {
                 alert('No tables found in the database.');
                 return;
             }
 
-            const tableNames = res[0].values.map(row => row[0]); // Extract table names
+            const tableNames = res[0].values.map(row => row[0]);
             let sqlContent = "-- SQL Export for All Tables\n\n";
 
             tableNames.forEach(tableName => {
-                // Get table structure using PRAGMA table_info
+                // --- Struktur tabel ---
                 const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
+                let columnTypes = {}; // simpan tipe per kolom
                 if (tableStructureRes.length > 0) {
                     const columns = tableStructureRes[0].values.map(col => {
-                        const columnName = col[1];  // Column name
-                        const dataType = col[2];  // Data type
-                        const isNotNull = col[3] === 1 ? "NOT NULL" : "";  // Handle NOT NULL constraint
-                        const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";  // Handle default value if any
-                        const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";  // Handle primary key constraint
-
-                        // Combine the parts to form the full column definition
+                        const columnName = col[1];
+                        const dataType = col[2];
+                        columnTypes[columnName] = dataType.toUpperCase(); // simpan tipe kolom
+                        const isNotNull = col[3] === 1 ? "NOT NULL" : "";
+                        const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";
+                        const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";
                         return `${columnName} ${dataType} ${isNotNull} ${defaultValue} ${primaryKey}`.trim();
                     }).join(",\n  ");
 
-                    // Add CREATE TABLE statement
                     sqlContent += `-- Table: ${tableName}\n`;
                     sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
                 }
+
+                // --- Data tabel ---
+                const tableDataRes = db.exec(`SELECT * FROM ${tableName};`);
+                if (tableDataRes.length > 0) {
+                    const columns = tableDataRes[0].columns;
+                    const rows = tableDataRes[0].values;
+
+                    rows.forEach(row => {
+                        const values = row.map((value, idx) => {
+                            if (value === null) return "NULL";
+
+                            const colName = columns[idx];
+                            const type = columnTypes[colName] || "";
+
+                            // cek tipe numerik
+                            if (/(INT|REAL|NUM|DECIMAL|DOUBLE|FLOAT)/.test(type)) {
+                                return value; // tanpa kutip
+                            }
+
+                            // default → anggap text
+                            return `'${value.toString().replace(/'/g, "''")}'`;
+                        });
+                        sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
+                    });
+                    sqlContent += "\n";
+                }
             });
 
-            // Create a downloadable file
             const blob = new Blob([sqlContent], { type: "text/sql" });
             const url = URL.createObjectURL(blob);
 
-            // Create a temporary download link and trigger download
             const a = document.createElement("a");
             a.href = url;
-            a.download = "all_tables.sql";
+            a.download = "all-tables.sql";
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
 
-            // Revoke URL to free memory
             URL.revokeObjectURL(url);
         });
+
 
         document.getElementById('downloadSqlButton').addEventListener('click', function () {
             if (!db) {
@@ -518,15 +540,19 @@
 
             // Get table structure using PRAGMA table_info
             const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
+            let columnTypes = {};
             if (tableStructureRes.length > 0) {
                 const columns = tableStructureRes[0].values.map(col => {
                     const columnName = col[1];  // Column name
-                    const dataType = col[2];  // Data type
-                    const isNotNull = col[3] === 1 ? "NOT NULL" : "";  // Handle NOT NULL constraint
-                    const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";  // Handle default value if any
-                    const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";  // Handle primary key constraint
+                    const dataType = col[2];    // Data type
 
-                    // Combine the parts to form the full column definition
+                    // simpan tipe kolom
+                    columnTypes[columnName] = dataType.toUpperCase();
+
+                    const isNotNull = col[3] === 1 ? "NOT NULL" : "";
+                    const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";
+                    const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";
+
                     return `${columnName} ${dataType} ${isNotNull} ${defaultValue} ${primaryKey}`.trim();
                 }).join(",\n  ");
 
@@ -542,9 +568,19 @@
                 const rows = tableDataRes[0].values;
 
                 rows.forEach(row => {
-                    const values = row.map(value =>
-                        value === null ? "NULL" : `'${value.toString().replace(/'/g, "''")}'` // Escape single quotes
-                    );
+                    const values = row.map((value, idx) => {
+                        if (value === null) return "NULL";
+
+                        const colName = columns[idx];
+                        const colType = columnTypes[colName] || "";
+
+                        if (/(INT|REAL|NUM|DECIMAL|DOUBLE|FLOAT)/.test(colType)) {
+                            return value; // tanpa kutip
+                        }
+                        // default → string dengan escape
+                        return `'${value.toString().replace(/'/g, "''")}'`;
+                        
+                    });
                     sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
                 });
                 sqlContent += "\n";
@@ -554,17 +590,16 @@
             const blob = new Blob([sqlContent], { type: "text/sql" });
             const url = URL.createObjectURL(blob);
 
-            // Create a temporary download link and trigger download
             const a = document.createElement("a");
             a.href = url;
-            a.download = "all_tables.sql";
+            a.download = `${tableName}.sql`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
 
-            // Revoke URL to free memory
             URL.revokeObjectURL(url);
         });
+
 
         document.getElementById('loadFromServerButton').addEventListener('click', function () {
             const databaseUrl = document.getElementById('databaseUrl').value.trim();
@@ -586,7 +621,7 @@
                     const uint8Array = new Uint8Array(arrayBuffer);
 
                     // Initialize SQL.js and load the database
-                    initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm` }).then(SQL => {
+                    initSqlJs({ locateFile: file => `js/sql-wasm.wasm` }).then(SQL => {
                         db = new SQL.Database(uint8Array);  // Create a new database instance
 
                         // Get the names of all tables in the database
