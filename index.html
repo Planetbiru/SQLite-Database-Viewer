@@ -25,7 +25,7 @@
             font-size: 12px;
         }
 
-        #sidebar {
+        #sqlite-table-sidebar {
             width: 200px;
             /* Fixed width for sidebar */
             border-right: 1px solid #ccc;
@@ -42,7 +42,7 @@
             /* Include padding and border in element's total width */
         }
 
-        #main {
+        #sqlite-table-main {
             margin-left: 200px;
             /* Leave space for the sidebar */
             margin-right: 240px;
@@ -57,7 +57,7 @@
             /* Calculate width based on sidebar and right bar */
         }
 
-        #rightbar {
+        #sqlite-rightbar {
             width: 240px;
             /* Fixed width for the right bar */
             border-left: 1px solid #ccc;
@@ -109,7 +109,7 @@
             box-sizing: border-box;
         }
 
-        #output, #selected-data, #table-container{
+        #output, #selected-data, #sqlite-table-container{
             min-height: calc(100vh - 70px);
             height: calc(100vh - 215px);
             overflow: auto;
@@ -149,28 +149,28 @@
             /* Allow vertical resizing only */
         }
 
-        #table-list {
+        #sqlite-table-list {
             list-style-type: none;
             margin: 0;
             padding: 0;
         }
 
-        #table-list a {
+        #sqlite-table-list a {
             color: #222222;
             text-decoration: none;
         }
 
-        #table-list li{
+        #sqlite-table-list li{
             padding: 5px 8px;
             white-space: nowrap;
             text-overflow: ellipsis;
             overflow: hidden;
         }
-        #table-list li.highlight{
+        #sqlite-table-list li.highlight{
             background-color: #EEEEEE;
         }
 
-        .header-section {
+        .sqlite-header-section {
             padding: 16px 0px 20px 0px;
             border-bottom: 1px solid #EEEEEE;
             margin-bottom: 10px;
@@ -219,27 +219,27 @@
 
 <body>
 
-    <div id="sidebar">
-        <div class="header-section">Table</div>
-        <div id="table-container">
-            <ul id="table-list"></ul>
+    <div id="sqlite-table-sidebar">
+        <div class="sqlite-header-section">Table</div>
+        <div id="sqlite-table-container">
+            <ul id="sqlite-table-list"></ul>
         </div>
     </div> <!-- Sidebar for table names -->
-    <div id="main">
-        <div class="input-area header-section">
-            <input type="file" id="fileInput" class="custom-file-input" accept=".sqlite" />
+    <div id="sqlite-table-main">
+        <div class="sqlite-input-area sqlite-header-section">
+            <input type="file" id="sqliteFileInput" class="custom-file-input" accept=".sqlite" />
             <!-- File input for SQLite files -->
-            <input type="text" id="databaseUrl" placeholder="Enter database URL" />
-            <button id="loadFromServerButton">Load from Server</button>
-            <label for="fileInput" class="file-label">Select File</label>
-            <button id="downloadSqlButton" disabled>Export Table to SQL</button>
-            <button id="downloadAllSqlButton" disabled>Export Database to SQL</button>
+            <input type="text" id="sqliteDatabaseUrl" placeholder="Enter database URL" />
+            <button id="sqliteLoadFromServerButton">Load from Server</button>
+            <label for="sqliteFileInput" class="file-label">Select File</label>
+            <button id="sqliteDownloadSqlButton" disabled>Export Table to SQL</button>
+            <button id="sqliteDownloadAllSqlButton" disabled>Export Database to SQL</button>
 
         </div>
         <div id="output"></div> <!-- Area to display table data -->
     </div>
-    <div id="rightbar">
-        <div class="header-section">View Data</div>
+    <div id="sqlite-rightbar">
+        <div class="sqlite-header-section">View Data</div>
         <div id="selected-data">
             <form id="editForm"></form> <!-- Form for editing data -->
         </div>
@@ -253,7 +253,7 @@
         let currentTableName = null; // To hold the name of the currently selected table
 
         // Event listener for file input change
-        document.getElementById('fileInput').addEventListener('change', function (event) {
+        document.getElementById('sqliteFileInput').addEventListener('change', function (event) {
             const file = event.target.files[0]; // Get the selected file
             if (!file) {
                 return; // Exit if no file is selected
@@ -271,7 +271,7 @@
                     // Get the names of all tables in the database
                     let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
 
-                    let tableList = document.querySelector('#sidebar #table-list'); // Get sidebar element
+                    let tableList = document.querySelector('#sqlite-table-sidebar #sqlite-table-list'); // Get sidebar element
                     tableList.innerHTML = ''; // Clear previous table names
                     res1[0].values.forEach(row => {
                         let tableListItem = document.createElement('li');
@@ -279,7 +279,7 @@
                         let tableContentLink = document.createElement('a'); // Create a link for the table
                         tableContentLink.href = '#';
                         tableContentLink.innerText = tableName; // Set link text to table name
-                        tableContentLink.classList.add('table-content');
+                        tableContentLink.classList.add('sqlite-table-content');
                         tableContentLink.addEventListener('click', function (e) //NOSONAR
                         {
                             e.preventDefault(); // Prevent default link behavior
@@ -289,7 +289,7 @@
                         let tableStructureLink = document.createElement('a'); // Create a link for the table
                         tableStructureLink.href = '#';
                         tableStructureLink.innerText = '#'; // Set link text to table name
-                        tableStructureLink.classList.add('table-structure');
+                        tableStructureLink.classList.add('sqlite-table-structure');
                         tableStructureLink.addEventListener('click', function (e) //NOSONAR
                         {
                             e.preventDefault(); // Prevent default link behavior
@@ -302,7 +302,7 @@
                         tableListItem.appendChild(tableContentLink);
                         tableList.appendChild(tableListItem); // Add link to sidebar
                     });
-                    document.getElementById('downloadAllSqlButton').disabled = false; // Enable download button for all tables
+                    document.getElementById('sqliteDownloadAllSqlButton').disabled = false; // Enable download button for all tables
                 });
             };
             reader.readAsArrayBuffer(file); // Read the selected file
@@ -340,7 +340,7 @@
         // Function to display data from the selected table
         function displayTableData(db, tableName) {
             currentTableName = tableName; // Store the current table name
-            document.getElementById('downloadSqlButton').disabled = false; // Enable download button
+            document.getElementById('sqliteDownloadSqlButton').disabled = false; // Enable download button
             let res = db.exec("SELECT * FROM " + tableName); // Execute query to fetch all data
             let output = document.getElementById('output'); // Get output area
             output.innerHTML = ''; // Clear previous output
@@ -360,7 +360,7 @@
 
         // Function to create HTML table from data
         function createTable(data) {
-            let tableString = '<table class="table-data"><thead><tr>';
+            let tableString = '<table class="sqlite-table-data"><thead><tr>';
 
             // Add column headers
             data.columns.forEach(column => {
@@ -431,7 +431,7 @@
 
         // Add event listener to the table rows for displaying edit form
         document.addEventListener('click', function (event) {
-            if (event.target.tagName === 'TD' && event.target.closest('table').classList.contains('table-data')) { // Check if a table cell was clicked
+            if (event.target.tagName === 'TD' && event.target.closest('table').classList.contains('sqlite-table-data')) { // Check if a table cell was clicked
                 const rowIndex = event.target.parentNode.rowIndex - 1; // Get the row index (adjust for header)
                 if (selectedRowIndex !== null) {
                     const previousRow = document.querySelectorAll('#output tr')[selectedRowIndex + 1]; // Get previous row
@@ -443,7 +443,7 @@
             }
         });
 
-        document.getElementById('downloadAllSqlButton').addEventListener('click', function () {
+        document.getElementById('sqliteDownloadAllSqlButton').addEventListener('click', function () {
             if (!db) {
                 alert('No database loaded!');
                 return;
@@ -518,7 +518,7 @@
         });
 
 
-        document.getElementById('downloadSqlButton').addEventListener('click', function () {
+        document.getElementById('sqliteDownloadSqlButton').addEventListener('click', function () {
             if (!db) {
                 alert('No database loaded!');
                 return;
@@ -601,16 +601,16 @@
         });
 
 
-        document.getElementById('loadFromServerButton').addEventListener('click', function () {
-            const databaseUrl = document.getElementById('databaseUrl').value.trim();
+        document.getElementById('sqliteLoadFromServerButton').addEventListener('click', function () {
+            const sqliteDatabaseUrl = document.getElementById('sqliteDatabaseUrl').value.trim();
 
-            if (!databaseUrl) {
+            if (!sqliteDatabaseUrl) {
                 alert("Please enter a valid URL to load the database.");
                 return;
             }
 
             // Fetch the database from the server
-            fetch(databaseUrl)
+            fetch(sqliteDatabaseUrl)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error("Failed to load database. Please check the URL.");
@@ -627,7 +627,7 @@
                         // Get the names of all tables in the database
                         let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
 
-                        let tableList = document.querySelector('#sidebar #table-list'); // Get sidebar element
+                        let tableList = document.querySelector('#sqlite-table-sidebar #sqlite-table-list'); // Get sidebar element
                         tableList.innerHTML = ''; // Clear previous table names
                         res1[0].values.forEach(row => {
                             let tableListItem = document.createElement('li');
@@ -635,7 +635,7 @@
                             let tableContentLink = document.createElement('a'); // Create a link for the table
                             tableContentLink.href = '#';
                             tableContentLink.innerText = tableName; // Set link text to table name
-                            tableContentLink.classList.add('table-content');
+                            tableContentLink.classList.add('sqlite-table-content');
                             tableContentLink.addEventListener('click', function (e) { //NOSONAR
                                 e.preventDefault(); // Prevent default link behavior
                                 displayTableData(db, tableName); // Display table data on click
@@ -644,7 +644,7 @@
                             let tableStructureLink = document.createElement('a'); // Create a link for the table
                             tableStructureLink.href = '#';
                             tableStructureLink.innerText = '#'; // Set link text to table name
-                            tableStructureLink.classList.add('table-structure');
+                            tableStructureLink.classList.add('sqlite-table-structure');
                             tableStructureLink.addEventListener('click', function (e) { //NOSONAR
                                 e.preventDefault(); // Prevent default link behavior
                                 displayTableStructure(db, tableName); // Display table data on click
@@ -657,7 +657,7 @@
                             tableList.appendChild(tableListItem); // Add link to sidebar
                         });
 
-                        document.getElementById('downloadAllSqlButton').disabled = false; // Enable download button for all tables
+                        document.getElementById('sqliteDownloadAllSqlButton').disabled = false; // Enable download button for all tables
                     });
                 })
                 .catch(error => {
