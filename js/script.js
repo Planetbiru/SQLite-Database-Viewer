@@ -1,0 +1,440 @@
+let currentData = null; // To hold the currently selected data
+let selectedRowIndex = null; // To keep track of the selected row index
+let columnInfo = []; // To hold column information for the currently selected table
+let db;
+let currentTableName = null; // To hold the name of the currently selected table
+
+// Event listener for file input change
+document.getElementById('sqliteFileInput').addEventListener('change', function (event) {
+    const file = event.target.files[0]; // Get the selected file
+    if (!file) {
+        return; // Exit if no file is selected
+    }
+
+    const reader = new FileReader(); // Create a FileReader object
+    reader.onload = function (event) {
+        const arrayBuffer = event.target.result; // Get file data as an ArrayBuffer
+        const uint8Array = new Uint8Array(arrayBuffer); // Convert ArrayBuffer to Uint8Array
+
+        // Initialize SQL.js and load the database
+        initSqlJs({ locateFile: file => `js/sql-wasm.wasm` }).then(SQL => {
+            db = new SQL.Database(uint8Array); // Create a new database instance
+
+            // Get the names of all tables in the database
+            let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
+
+            let tableList = document.querySelector('#sqlite-table-sidebar #sqlite-table-list'); // Get sidebar element
+            tableList.innerHTML = ''; // Clear previous table names
+            res1[0].values.forEach(row => {
+                let tableListItem = document.createElement('li');
+                let tableName = row[0]; // Extract table name
+                let tableContentLink = document.createElement('a'); // Create a link for the table
+                tableContentLink.href = '#';
+                tableContentLink.innerText = tableName; // Set link text to table name
+                tableContentLink.classList.add('sqlite-table-content');
+                tableContentLink.addEventListener('click', function (e) //NOSONAR
+                {
+                    e.preventDefault(); // Prevent default link behavior
+                    displayTableData(db, tableName); // Display table data on click
+                    hilightTable(e);
+                });
+                let tableStructureLink = document.createElement('a'); // Create a link for the table
+                tableStructureLink.href = '#';
+                tableStructureLink.innerText = '#'; // Set link text to table name
+                tableStructureLink.classList.add('sqlite-table-structure');
+                tableStructureLink.addEventListener('click', function (e) //NOSONAR
+                {
+                    e.preventDefault(); // Prevent default link behavior
+                    displayTableStructure(db, tableName); // Display table data on click
+                    hilightTable(e);
+                });
+
+                tableListItem.appendChild(tableStructureLink);
+                tableListItem.appendChild(document.createTextNode(' '));
+                tableListItem.appendChild(tableContentLink);
+                tableList.appendChild(tableListItem); // Add link to sidebar
+            });
+            document.getElementById('sqliteDownloadAllSqlButton').disabled = false; // Enable download button for all tables
+        });
+    };
+    reader.readAsArrayBuffer(file); // Read the selected file
+});
+
+// Function to display table structure (columns and their data types)
+function displayTableStructure(db, tableName) {
+    let res = db.exec(`PRAGMA table_info(${tableName});`); // Get column info using PRAGMA table_info
+    let output = document.getElementById('output'); // Get output area
+    output.innerHTML = ''; // Clear previous output
+
+    if (res.length > 0) {
+        // Create an HTML table to display column info
+        let tableString = `<h3>Table Structure: ${tableName}</h3><table><thead><tr><th>Column Name</th><th>Data Type</th><th>Not Null</th><th>Default</th><th>Primary Key</th></tr></thead><tbody>`;
+
+        // Iterate through the column info and create table rows
+        res[0].values.forEach(column => {
+            tableString += '<tr>';
+            tableString += `<td>${column[1]}</td>`; // Column name
+            tableString += `<td>${column[2]}</td>`; // Data type
+            tableString += `<td>${column[3] === 1 ? 'Yes' : 'No'}</td>`; // Not Null constraint
+            tableString += `<td>${column[4] === null ? '' : column[4]}</td>`; // Default data
+            tableString += `<td>${column[5] === 1 ? 'Yes' : 'No'}</td>`; // Primary Key constraint
+            tableString += '</tr>';
+        });
+        tableString += '</tbody></table>'; // Close the table
+
+        output.innerHTML = tableString; // Display the generated table structure
+    } else {
+        output.innerHTML = "No structure found."; // Display message if no structure is found
+    }
+}
+
+
+// Function to display data from the selected table
+function displayTableData(db, tableName) {
+    currentTableName = tableName; // Store the current table name
+    document.getElementById('sqliteDownloadSqlButton').disabled = false; // Enable download button
+    let res = db.exec("SELECT * FROM " + tableName); // Execute query to fetch all data
+    let output = document.getElementById('output'); // Get output area
+    output.innerHTML = ''; // Clear previous output
+
+    // Fetch column info for the table
+    columnInfo = db.exec(`PRAGMA table_info(${tableName});`)[0].values;
+
+    if (res.length > 0) {
+        output.innerHTML = `<h3>Table Content: ${tableName}</h3>` + createTable(res[0]); // Create and display table
+        currentData = res[0]; // Store current data for editing
+    } else {
+        output.innerHTML = `<h3>Table Content: ${tableName}</h3>` + "<p>No data found.</p>"; // Display message if no data
+    }
+}
+
+
+
+// Function to create HTML table from data
+function createTable(data) {
+    let tableString = '<table class="sqlite-table-data"><thead><tr>';
+
+    // Add column headers
+    data.columns.forEach(column => {
+        tableString += `<th>${column}</th>`;
+    });
+    tableString += '</tr></thead><tbody>';
+
+    // Add rows of data
+    data.values.forEach((row, rowIndex) => {
+        tableString += '<tr>';
+        row.forEach((cell, index) => {
+            tableString += `<td>${cell !== null ? cell : ''}</td>`; // Handle null values
+        });
+        tableString += '</tr>';
+    });
+    tableString += '</tbody></table>'; // Close table
+
+    return tableString; // Return generated table HTML
+}
+
+// Function to display selected row data in the right sidebar
+function displayEditForm(row) {
+    const editForm = document.getElementById('editForm'); // Get edit form element
+    editForm.innerHTML = ''; // Clear previous form
+
+    currentData.columns.forEach((column, index) => {
+        const dataType = "" + getDataType(column); // Get the data type of the column
+        const length = currentData.values[0][index]?.toString().length || 0; // Calculate length
+
+        const formGroup = document.createElement('div'); // Create a container for each form element
+        formGroup.classList.add('data-column');
+        formGroup.innerHTML = `<div>${column} <div class="data-type">${dataType}</div></div>`; // Add column name and data type
+
+        let input; // Variable to hold the input element
+        // Determine input type based on data type
+        if (dataType.toLocaleLowerCase() === 'text' || dataType.toLocaleLowerCase() === 'longtext') {
+            input = document.createElement('textarea'); // Use textarea for text types
+            input.value = row[index] || ''; // Set value from the row data
+            input.setAttribute('spellcheck', 'false'); // Disable spellcheck
+        } else {
+            input = document.createElement('input'); // Use input for other types
+            input.type = 'text';
+            input.value = row[index] || ''; // Set value from the row data
+        }
+        formGroup.appendChild(input); // Add input to form group
+        editForm.appendChild(formGroup); // Add form group to edit form
+    });
+}
+
+// Function to get the data type of a column
+function getDataType(columnName) {
+    // Find the column info for the specified column name
+    const column = columnInfo.find(col => col[1] === columnName); // Column info retrieval
+    return column ? column[2] : 'UNKNOWN'; // Return type or 'UNKNOWN' if not found
+}
+
+function hilightTable(e) {
+    let li = e.target.closest('li');
+    const listItems = li.closest('ul').querySelectorAll('li');
+
+    // Iterasi dan hapus kelas tertentu (misalnya 'highlight') dari setiap elemen <li>
+    listItems.forEach(item => {
+        item.classList.remove('highlight');
+    });
+    li.classList.add('highlight');
+}
+
+// Add event listener to the table rows for displaying edit form
+document.addEventListener('click', function (event) {
+    if (event.target.tagName === 'TD' && event.target.closest('table').classList.contains('sqlite-table-data')) { // Check if a table cell was clicked
+        const rowIndex = event.target.parentNode.rowIndex - 1; // Get the row index (adjust for header)
+        if (selectedRowIndex !== null) {
+            const previousRow = document.querySelectorAll('#output tr')[selectedRowIndex + 1]; // Get previous row
+            previousRow.classList.remove('selected'); // Remove highlight from previous row
+        }
+        selectedRowIndex = rowIndex; // Update selected row index
+        event.target.parentNode.classList.add('selected'); // Highlight current row
+        displayEditForm(currentData.values[rowIndex]); // Display edit form for selected row
+    }
+});
+
+document.getElementById('sqliteDownloadAllSqlButton').addEventListener('click', function () {
+    if (!db) {
+        alert('No database loaded!');
+        return;
+    }
+
+    const res = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
+    if (res.length === 0 || res[0].values.length === 0) {
+        alert('No tables found in the database.');
+        return;
+    }
+
+    const tableNames = res[0].values.map(row => row[0]);
+    let sqlContent = "-- SQL Export for All Tables\n\n";
+
+    tableNames.forEach(tableName => {
+        // --- Struktur tabel ---
+        const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
+        let columnTypes = {}; // simpan tipe per kolom
+        if (tableStructureRes.length > 0) {
+            const columns = tableStructureRes[0].values.map(col => {
+                const columnName = col[1];
+                const dataType = col[2];
+                columnTypes[columnName] = dataType.toUpperCase(); // simpan tipe kolom
+                const isNotNull = col[3] === 1 ? "NOT NULL" : "";
+                const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";
+                const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";
+                return `${columnName} ${dataType} ${isNotNull} ${defaultValue} ${primaryKey}`.trim();
+            }).join(",\n  ");
+
+            sqlContent += `-- Table: ${tableName}\n`;
+            sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
+        }
+
+        // --- Data tabel ---
+        const tableDataRes = db.exec(`SELECT * FROM ${tableName};`);
+        if (tableDataRes.length > 0) {
+            const columns = tableDataRes[0].columns;
+            const rows = tableDataRes[0].values;
+
+            rows.forEach(row => {
+                const values = row.map((value, idx) => {
+                    if (value === null) return "NULL";
+
+                    const colName = columns[idx];
+                    const type = columnTypes[colName] || "";
+
+                    // cek tipe numerik
+                    if (/(INT|REAL|NUM|DECIMAL|DOUBLE|FLOAT)/.test(type)) {
+                        return value; // tanpa kutip
+                    }
+
+                    // default → anggap text
+                    return `'${value.toString().replace(/'/g, "''")}'`;
+                });
+                sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
+            });
+            sqlContent += "\n";
+        }
+    });
+
+    const blob = new Blob([sqlContent], { type: "text/sql" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "all-tables.sql";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+});
+
+
+document.getElementById('sqliteDownloadSqlButton').addEventListener('click', function () {
+    if (!db) {
+        alert('No database loaded!');
+        return;
+    }
+
+    // Get the list of all tables
+    const res = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
+    if (res.length === 0 || res[0].values.length === 0) {
+        alert('No tables found in the database.');
+        return;
+    }
+
+    let sqlContent = "-- SQL Export for All Tables\n\n";
+    let tableName = currentTableName; // Get the currently selected table name
+    if (!tableName) {
+        alert('No table selected!');
+        return;
+    }
+
+    // Get table structure using PRAGMA table_info
+    const tableStructureRes = db.exec(`PRAGMA table_info(${tableName});`);
+    let columnTypes = {};
+    if (tableStructureRes.length > 0) {
+        const columns = tableStructureRes[0].values.map(col => {
+            const columnName = col[1];  // Column name
+            const dataType = col[2];    // Data type
+
+            // simpan tipe kolom
+            columnTypes[columnName] = dataType.toUpperCase();
+
+            const isNotNull = col[3] === 1 ? "NOT NULL" : "";
+            const defaultValue = col[4] ? `DEFAULT ${col[4]}` : "";
+            const primaryKey = col[5] === 1 ? "PRIMARY KEY" : "";
+
+            return `${columnName} ${dataType} ${isNotNull} ${defaultValue} ${primaryKey}`.trim();
+        }).join(",\n  ");
+
+        // Add CREATE TABLE statement
+        sqlContent += `-- Table: ${tableName}\n`;
+        sqlContent += `CREATE TABLE ${tableName} (\n  ${columns}\n);\n\n`;
+    }
+
+    // Get table data
+    const tableDataRes = db.exec(`SELECT * FROM ${tableName};`);
+    if (tableDataRes.length > 0) {
+        const columns = tableDataRes[0].columns;
+        const rows = tableDataRes[0].values;
+
+        rows.forEach(row => {
+            const values = row.map((value, idx) => {
+                if (value === null) return "NULL";
+
+                const colName = columns[idx];
+                const colType = columnTypes[colName] || "";
+
+                if (/(INT|REAL|NUM|DECIMAL|DOUBLE|FLOAT)/.test(colType)) {
+                    return value; // tanpa kutip
+                }
+                // default → string dengan escape
+                return `'${value.toString().replace(/'/g, "''")}'`;
+
+            });
+            sqlContent += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});\n`;
+        });
+        sqlContent += "\n";
+    }
+
+    // Create a downloadable file
+    const blob = new Blob([sqlContent], { type: "text/sql" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${tableName}.sql`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+});
+
+
+document.getElementById('sqliteLoadFromServerButton').addEventListener('click', function () {
+    const sqliteDatabaseUrl = document.getElementById('sqliteDatabaseUrl').value.trim();
+
+    if (!sqliteDatabaseUrl) {
+        alert("Please enter a valid URL to load the database.");
+        return;
+    }
+
+    // Fetch the database from the server
+    fetch(sqliteDatabaseUrl)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("Failed to load database. Please check the URL.");
+            }
+            return response.arrayBuffer();  // Convert the response to ArrayBuffer
+        })
+        .then(arrayBuffer => {
+            const uint8Array = new Uint8Array(arrayBuffer);
+
+            // Initialize SQL.js and load the database
+            initSqlJs({ locateFile: file => `js/sql-wasm.wasm` }).then(SQL => {
+                db = new SQL.Database(uint8Array);  // Create a new database instance
+
+                // Get the names of all tables in the database
+                let res1 = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
+
+                let tableList = document.querySelector('#sqlite-table-sidebar #sqlite-table-list'); // Get sidebar element
+                tableList.innerHTML = ''; // Clear previous table names
+                res1[0].values.forEach(row => {
+                    let tableListItem = document.createElement('li');
+                    let tableName = row[0]; // Extract table name
+                    let tableContentLink = document.createElement('a'); // Create a link for the table
+                    tableContentLink.href = '#';
+                    tableContentLink.innerText = tableName; // Set link text to table name
+                    tableContentLink.classList.add('sqlite-table-content');
+                    tableContentLink.addEventListener('click', function (e) { //NOSONAR
+                        e.preventDefault(); // Prevent default link behavior
+                        displayTableData(db, tableName); // Display table data on click
+                        hilightTable(e);
+                    });
+                    let tableStructureLink = document.createElement('a'); // Create a link for the table
+                    tableStructureLink.href = '#';
+                    tableStructureLink.innerText = '#'; // Set link text to table name
+                    tableStructureLink.classList.add('sqlite-table-structure');
+                    tableStructureLink.addEventListener('click', function (e) { //NOSONAR
+                        e.preventDefault(); // Prevent default link behavior
+                        displayTableStructure(db, tableName); // Display table data on click
+                        hilightTable(e);
+                    });
+
+                    tableListItem.appendChild(tableStructureLink);
+                    tableListItem.appendChild(document.createTextNode(' '));
+                    tableListItem.appendChild(tableContentLink);
+                    tableList.appendChild(tableListItem); // Add link to sidebar
+                });
+
+                document.getElementById('sqliteDownloadAllSqlButton').disabled = false; // Enable download button for all tables
+            });
+        })
+        .catch(error => {
+            alert(`Error loading database from server: ${error.message}`);
+        });
+});
+
+// Privacy Modal Logic
+const modal = document.getElementById("privacyModal");
+const btn = document.getElementById("privacyButton");
+const span = document.getElementsByClassName("close")[0];
+
+if (btn) {
+    btn.addEventListener('click', function() {
+        modal.style.display = "block";
+    });
+}
+
+if (span) {
+    span.addEventListener('click', function() {
+        modal.style.display = "none";
+    });
+}
+
+window.addEventListener('click', function(event) {
+    if (event.target == modal) {
+        modal.style.display = "none";
+    }
+});
