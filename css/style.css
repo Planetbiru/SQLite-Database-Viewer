@@ -159,11 +159,15 @@ textarea {
 }
 
 .sqlite-header-section {
-    padding: 16px 0px 20px 0px;
-    border-bottom: 1px solid #EEEEEE;
+    padding: 10px 0 20px;
+    border-bottom: 1px solid #eee;
     margin-bottom: 10px;
-    height: 48px;
+    height: 50px;
     box-sizing: border-box;
+}
+
+.sqlite-header-section .header-label{
+    padding-top: 10px;
 }
 
 .custom-file-input {
@@ -216,9 +220,11 @@ button:disabled {
     overflow: auto;
     background-color: rgba(0, 0, 0, 0.4);
 }
-.modal h2{
+
+.modal h2 {
     margin-top: 0;
 }
+
 .modal-content {
     background-color: #fefefe;
     margin: 15% auto;
@@ -227,8 +233,9 @@ button:disabled {
     width: 80%;
     max-width: 500px;
     border-radius: 5px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
+
 .close {
     color: #aaa;
     float: right;
@@ -238,6 +245,7 @@ button:disabled {
     margin-top: -8px;
     margin-right: -4px;
 }
+
 .close:hover,
 .close:focus {
     color: black;
